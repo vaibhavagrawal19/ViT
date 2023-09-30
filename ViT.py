@@ -23,11 +23,13 @@ class PatchEmbedding(nn.Module):
         
 
 class ViT(nn.Module):
-    def __init__(self, image_dim: tuple, in_channels=3, patch_dim=(16, 16), hidden_dim=512):
+    def __init__(self, image_dim: tuple, in_channels=3, patch_dim=(16, 16), hidden_dim=512, n_heads=8, out_dim=10):
         super().__init__()
         self.image_dim = image_dim
         self.in_channels = in_channels
         self.patch_dim = patch_dim
+        self.n_heads = n_heads
+        self.out_dim = out_dim
         self.class_token = nn.Parameter(torch.rand(1, self.embed_dim))
         n_patches_x = image_dim[0] // patch_dim[0] if image_dim[0] % patch_dim[0] == 0 else image_dim[0] // patch_dim[0] + 1
         n_patches_y = image_dim[1] // patch_dim[1] if image_dim[1] % patch_dim[1] == 0 else image_dim[1] // patch_dim[1] + 1
@@ -36,6 +38,9 @@ class ViT(nn.Module):
         self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
         self.pos_embed.requires_grad = False
         self.class_token = nn.Parameter(torch.empty((self.hidden_dim, )))
+        self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_heads)])
+        self.encoders = nn.Sequential(*(self.encoders))
+        self.mlp = nn.Linear(self.hidden_dim, self.out_dim)
 
     def get_pos_embed(self, n_patches: int, type="manual"):
         result = torch.empty((n_patches, self.hidden_dim))
@@ -44,13 +49,16 @@ class ViT(nn.Module):
                 result[i][j] = torch.sin(i / (10000 ** (j / self.D))) if j % 2 == 0 else torch.cos(i / (10000 ** ((j - 1) / self.D)))
         return result
     
-    def forward(self, X):
-        n = X.shape[0]
+    def forward(self, x):
+        n = x.shape[0]
         patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim)
-        patch_embeddings = patchify(X)
+        patch_embeddings = patchify(x)
         for i in range(n):
             patch_embeddings[i] = torch.cat([patch_embeddings[i], nn.Parameter(torch.empty((self.hidden_dim, )))])
             patch_embeddings[i] = patch_embeddings[i] + self.pos_embed
+        features = self.encoders(patch_embeddings)[:, 0]
+        return self.mlp(features)
+        
         
 
 class MultiHeadAttention(nn.Module):
