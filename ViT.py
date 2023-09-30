@@ -73,10 +73,18 @@ class MultiHeadAttention(nn.Module):
                 q = self.Q[head](sequence)
                 k = self.K[head](sequence)
                 v = self.V[head](sequence)
-                scores = self.softmax((q @ k.T) / torch.sqrt(self.v_dim))
-                seq_result.append(v.T @ scores)
+                # assert q.shape == (len(sequence), self.v_dim)
+                # assert k.shape == (len(sequence), self.v_dim)
+                # assert v.shape == (len(sequence), self.v_dim)
+                scores = self.softmax((q @ k.T) / math.sqrt(self.v_dim))
+                # assert scores.shape == (len(sequence), len(sequence))
+                z = scores @ v
+                seq_result.append(z)
             results.append(seq_result)
-        return torch.cat(results, dim=1)
+        results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
+        # print(results[0].shape)
+        results = torch.cat([result[None, :] for result in results])
+        return results
     
 
 class Encoder(nn.Module):
@@ -86,13 +94,18 @@ class Encoder(nn.Module):
         self.n_heads = n_heads
         self.layer_norm = nn.LayerNorm(self.hidden_dim)
         self.attention = MultiHeadAttention(self.hidden_dim, self.n_heads)
-        self.mlp = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.GELU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim)
+        )
 
     def forward(self, x):
         n = x.shape[0]
         x_ = x.clone()
         x = self.layer_norm(x)
         x = self.attention(x)
+        print(x.shape)
         x = x + x_
         x_ = x.clone()
         x = self.layer_norm(x)
@@ -100,3 +113,14 @@ class Encoder(nn.Module):
         x = x + x_
         del x_
         return x
+    
+
+if __name__ == "__main__":
+    batch_size = 10
+    n_words = 20
+    embed_dim = 512
+    n_heads = 8
+    model = Encoder()
+    x = torch.rand(batch_size, n_words, embed_dim)
+    out = model(x)
+    print(out.shape)
