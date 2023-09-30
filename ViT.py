@@ -12,15 +12,19 @@ class PatchEmbedding(nn.Module):
     def __init__(self, image_dim: tuple, patch_dim: tuple, in_channels: int, embed_dim: int):
         super().__init__()
         self.embed_dim = embed_dim
-        self.padding = (patch_dim[0] - (image_dim[0] % patch_dim[0]), patch_dim[1] - (image_dim[1] % patch_dim[1]))
+        padding_x = (patch_dim[0] - (image_dim[0] % patch_dim[0])) % patch_dim[0]
+        padding_y = (patch_dim[1] - (image_dim[1] % patch_dim[1])) % patch_dim[1]
+        self.padding = (padding_x, padding_y)
         self.projection = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_dim, stride=patch_dim, padding=self.padding)
 
     def forward(self, x):
         n = x.shape[0]
         x = self.projection(x)
-        x = x.reshape((n, -1, self.embed_dim))
+        x = x.view(n, self.embed_dim, -1)
+        x = torch.transpose(x, -2, -1)
         return x
         
+
 
 class ViT(nn.Module):
     def __init__(self, image_dim: tuple, in_channels=3, patch_dim=(16, 16), hidden_dim=512, n_heads=8, out_dim=10):
@@ -30,7 +34,6 @@ class ViT(nn.Module):
         self.patch_dim = patch_dim
         self.n_heads = n_heads
         self.out_dim = out_dim
-        self.class_token = nn.Parameter(torch.rand(1, self.embed_dim))
         n_patches_x = image_dim[0] // patch_dim[0] if image_dim[0] % patch_dim[0] == 0 else image_dim[0] // patch_dim[0] + 1
         n_patches_y = image_dim[1] // patch_dim[1] if image_dim[1] % patch_dim[1] == 0 else image_dim[1] // patch_dim[1] + 1
         self.n_patches = n_patches_x * n_patches_y
@@ -45,17 +48,18 @@ class ViT(nn.Module):
     def get_pos_embed(self, n_patches: int, type="manual"):
         result = torch.empty((n_patches, self.hidden_dim))
         for i in range(n_patches):
-            for j in range(self.D):
-                result[i][j] = torch.sin(i / (10000 ** (j / self.D))) if j % 2 == 0 else torch.cos(i / (10000 ** ((j - 1) / self.D)))
+            for j in range(self.hidden_dim):
+                result[i][j] = math.sin(i / (10000 ** (j / self.hidden_dim))) if j % 2 == 0 else math.cos(i / (10000 ** ((j - 1) / self.hidden_dim)))
         return result
     
     def forward(self, x):
         n = x.shape[0]
         patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim)
         patch_embeddings = patchify(x)
+        embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim)
         for i in range(n):
-            patch_embeddings[i] = torch.cat([patch_embeddings[i], nn.Parameter(torch.empty((self.hidden_dim, )))])
-            patch_embeddings[i] = patch_embeddings[i] + self.pos_embed
+            embeddings[i] = torch.cat([patch_embeddings[i], nn.Parameter(torch.empty((self.hidden_dim, )))[None, :]])
+            embeddings[i] = embeddings[i] + self.pos_embed
         features = self.encoders(patch_embeddings)[:, 0]
         return self.mlp(features)
         
@@ -90,7 +94,6 @@ class MultiHeadAttention(nn.Module):
                 seq_result.append(z)
             results.append(seq_result)
         results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
-        # print(results[0].shape)
         results = torch.cat([result[None, :] for result in results])
         return results
     
@@ -113,7 +116,6 @@ class Encoder(nn.Module):
         x_ = x.clone()
         x = self.layer_norm(x)
         x = self.attention(x)
-        print(x.shape)
         x = x + x_
         x_ = x.clone()
         x = self.layer_norm(x)
@@ -128,7 +130,7 @@ if __name__ == "__main__":
     n_words = 20
     embed_dim = 512
     n_heads = 8
-    model = Encoder()
-    x = torch.rand(batch_size, n_words, embed_dim)
+    model = ViT((224, 224))
+    x = torch.rand(batch_size, 3, 224, 224)
     out = model(x)
     print(out.shape)
