@@ -85,6 +85,7 @@ class MultiHeadAttention(nn.Module):
         self.K = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
         self.V = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
         self.softmax = nn.Softmax(dim=-1)
+        self.mlp = nn.Linear(self.hidden_dim, self.hidden_dim)
 
     def forward(self, sequences):
         results = []
@@ -100,6 +101,7 @@ class MultiHeadAttention(nn.Module):
             results.append(seq_result)
         results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
         results = torch.cat([result[None, :] for result in results], dim=0)
+        results = self.mlp(results)
         return results
     
 
