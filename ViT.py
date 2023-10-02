@@ -47,8 +47,14 @@ class ViT(nn.Module):
         n_patches_y = image_dim[1] // patch_dim[1] if image_dim[1] % patch_dim[1] == 0 else image_dim[1] // patch_dim[1] + 1
         self.n_patches = n_patches_x * n_patches_y
         self.hidden_dim = hidden_dim
-        # self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
-        # self.pos_embed.requires_grad = False
+
+        """
+        # USE THIS WHEN YOU WANT THE SINE-COSINE POSITION EMBEDDINGS INSTEAD OF THE LEARNED POSITION EMBEDDINGS
+        
+        self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
+        self.pos_embed.requires_grad = False
+
+        """
         self.pos_embed = nn.Parameter(torch.rand(1, self.n_patches + 1, self.hidden_dim))
         self.class_token = nn.Parameter(torch.rand((1, self.hidden_dim)))
         self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_encoders)])
@@ -56,12 +62,12 @@ class ViT(nn.Module):
         self.mlp = nn.Linear(self.hidden_dim, self.out_dim)
         self.patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim)
 
-    # def get_pos_embed(self, n_patches: int, type="manual"):
-    #     result = torch.empty((n_patches, self.hidden_dim))
-    #     for i in range(n_patches):
-    #         for j in range(self.hidden_dim):
-    #             result[i][j] = math.sin(i / (10000 ** (j / self.hidden_dim))) if j % 2 == 0 else math.cos(i / (10000 ** ((j - 1) / self.hidden_dim)))
-    #     return result
+    def get_pos_embed(self, n_patches: int):
+        result = torch.empty((n_patches, self.hidden_dim))
+        for i in range(n_patches):
+            for j in range(self.hidden_dim):
+                result[i][j] = math.sin(i / (10000 ** (j / self.hidden_dim))) if j % 2 == 0 else math.cos(i / (10000 ** ((j - 1) / self.hidden_dim)))
+        return result
     
     def forward(self, x):
         n = x.shape[0]
