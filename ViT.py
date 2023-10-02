@@ -27,7 +27,7 @@ class PatchEmbedding(nn.Module):
     def forward(self, x):
         n = x.shape[0]
         x = self.projection(x)
-        x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3])
+        x = x.flatten(start_dim=-2)
         x = torch.transpose(x, -2, -1)
         return x
 
@@ -47,27 +47,31 @@ class ViT(nn.Module):
         n_patches_y = image_dim[1] // patch_dim[1] if image_dim[1] % patch_dim[1] == 0 else image_dim[1] // patch_dim[1] + 1
         self.n_patches = n_patches_x * n_patches_y
         self.hidden_dim = hidden_dim
-        self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
-        self.pos_embed.requires_grad = False
-        self.class_token = nn.Parameter(torch.empty((self.hidden_dim, )))
+        # self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
+        # self.pos_embed.requires_grad = False
+        self.pos_embed = nn.Parameter(torch.rand(1, self.n_patches + 1, self.hidden_dim))
+        self.class_token = nn.Parameter(torch.rand((1, self.hidden_dim)))
         self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_encoders)])
         self.encoders = nn.Sequential(*(self.encoders))
         self.mlp = nn.Linear(self.hidden_dim, self.out_dim)
 
-    def get_pos_embed(self, n_patches: int, type="manual"):
-        result = torch.empty((n_patches, self.hidden_dim))
-        for i in range(n_patches):
-            for j in range(self.hidden_dim):
-                result[i][j] = math.sin(i / (10000 ** (j / self.hidden_dim))) if j % 2 == 0 else math.cos(i / (10000 ** ((j - 1) / self.hidden_dim)))
-        return result
+    # def get_pos_embed(self, n_patches: int, type="manual"):
+    #     result = torch.empty((n_patches, self.hidden_dim))
+    #     for i in range(n_patches):
+    #         for j in range(self.hidden_dim):
+    #             result[i][j] = math.sin(i / (10000 ** (j / self.hidden_dim))) if j % 2 == 0 else math.cos(i / (10000 ** ((j - 1) / self.hidden_dim)))
+    #     return result
     
     def forward(self, x):
         n = x.shape[0]
         patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim).to(self.device)
         patch_embeddings = patchify(x)
+        # print(patch_embeddings.shape)
+        # print((self.n_patches, self.hidden_dim))
+        assert patch_embeddings.shape == (n, self.n_patches, self.hidden_dim)
         embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(device)
         for i in range(n):
-            embeddings[i] = torch.cat([patch_embeddings[i], self.class_token[None, :]])
+            embeddings[i] = torch.cat([patch_embeddings[i], self.class_token])
             embeddings[i] = embeddings[i] + self.pos_embed
         features = self.encoders(patch_embeddings)[:, 0]
         return self.mlp(features)
@@ -142,7 +146,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"using {device}")
     # device = torch.device("cpu")
-    model = ViT((28, 28), device, in_channels=1, n_encoders=1).to(device)
+    model = ViT((28, 28), device, in_channels=1, n_encoders=1, patch_dim=(4, 4)).to(device)
     # for name, param in model.named_parameters():
     #     print(f"{name}: {param.shape}")
     optimizer = opt.Adam(model.parameters(), lr=LR)
