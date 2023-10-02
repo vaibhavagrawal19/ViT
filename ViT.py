@@ -114,6 +114,38 @@ class MultiHeadAttention(nn.Module):
     
 
 
+class Faster_MultiHeadAttention(nn.Module):
+    def __init__(self, hidden_dim=512, n_heads=8):
+        super().__init__()
+        assert hidden_dim % n_heads == 0
+        self.hidden_dim = hidden_dim
+        self.n_heads = n_heads
+        self.v_dim = self.hidden_dim // self.n_heads
+        self.Q = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        self.K = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        self.V = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        self.softmax = nn.Softmax(dim=-1)
+        self.mlp = nn.Linear(self.hidden_dim, self.hidden_dim)
+
+    def forward(self, sequences):
+        results = []
+        for sequence in sequences:
+            seq_result = []
+            for head in range(self.n_heads):
+                q = self.Q[head](sequence)
+                k = self.K[head](sequence)
+                v = self.V[head](sequence)
+                scores = self.softmax((q @ k.T) / math.sqrt(self.v_dim))
+                z = scores @ v
+                seq_result.append(z)
+            results.append(seq_result)
+        results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
+        results = torch.cat([result[None, :] for result in results], dim=0)
+        results = self.mlp(results)
+        return results
+    
+
+
 class Encoder(nn.Module):
     def __init__(self, hidden_dim=512, n_heads=8):
         super().__init__()
@@ -151,8 +183,6 @@ if __name__ == "__main__":
     print(f"using {device}")
     # device = torch.device("cpu")
     model = ViT((28, 28), device, in_channels=1, n_encoders=1, patch_dim=(4, 4)).to(device)
-    # for name, param in model.named_parameters():
-    #     print(f"{name}: {param.shape}")
     optimizer = opt.Adam(model.parameters(), lr=LR)
     criterion = nn.CrossEntropyLoss()
     for epoch in range(NUM_EPOCHS):
