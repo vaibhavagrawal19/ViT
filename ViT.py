@@ -54,6 +54,7 @@ class ViT(nn.Module):
         self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_encoders)])
         self.encoders = nn.Sequential(*(self.encoders))
         self.mlp = nn.Linear(self.hidden_dim, self.out_dim)
+        self.patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim)
 
     # def get_pos_embed(self, n_patches: int, type="manual"):
     #     result = torch.empty((n_patches, self.hidden_dim))
@@ -64,12 +65,9 @@ class ViT(nn.Module):
     
     def forward(self, x):
         n = x.shape[0]
-        patchify = PatchEmbedding(self.image_dim, self.patch_dim, self.in_channels, self.hidden_dim).to(self.device)
-        patch_embeddings = patchify(x)
-        # print(patch_embeddings.shape)
-        # print((self.n_patches, self.hidden_dim))
+        patch_embeddings = self.patchify(x)
         assert patch_embeddings.shape == (n, self.n_patches, self.hidden_dim)
-        embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(device)
+        embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(self.device)
         for i in range(n):
             embeddings[i] = torch.cat([patch_embeddings[i], self.class_token])
             embeddings[i] = embeddings[i] + self.pos_embed
