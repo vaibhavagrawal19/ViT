@@ -89,28 +89,44 @@ class MultiHeadAttention(nn.Module):
         self.hidden_dim = hidden_dim
         self.n_heads = n_heads
         self.v_dim = self.hidden_dim // self.n_heads
-        self.Q = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
-        self.K = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
-        self.V = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        self.Q = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.K = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.V = nn.Linear(self.hidden_dim, self.hidden_dim)
+        # self.Q = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        # self.K = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
+        # self.V = nn.ModuleList([nn.Linear(self.hidden_dim, self.v_dim) for _ in range(self.n_heads)])
         self.softmax = nn.Softmax(dim=-1)
         self.mlp = nn.Linear(self.hidden_dim, self.hidden_dim)
 
-    def forward(self, sequences):
-        results = []
-        for sequence in sequences:
-            seq_result = []
-            for head in range(self.n_heads):
-                q = self.Q[head](sequence)
-                k = self.K[head](sequence)
-                v = self.V[head](sequence)
-                scores = self.softmax((q @ k.T) / math.sqrt(self.v_dim))
-                z = scores @ v
-                seq_result.append(z)
-            results.append(seq_result)
-        results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
-        results = torch.cat([result[None, :] for result in results], dim=0)
-        results = self.mlp(results)
-        return results
+    def attention(self, query, key, value):
+        scores = self.softmax((query @ key.transpose(-2, -1)) / math.sqrt(self.v_dim))
+        return scores @ value
+
+    def forward(self, x):
+        query = self.Q(x).reshape(x.shape[0], -1, self.n_heads, self.v_dim).transpose(1, 2)
+        key = self.K(x).reshape(x.shape[0], -1, self.n_heads, self.v_dim).transpose(1, 2)
+        value = self.V(x).reshape(x.shape[0], -1, self.n_heads, self.v_dim).transpose(1, 2)
+        x = self.attention(query, key, value)
+        x = x.transpose(1, 2).reshape(x.shape[0], -1, self.hidden_dim)
+        return self.mlp(x)
+
+    # def forward(self, sequences):
+    #     results = []
+    #     for sequence in sequences:
+    #         seq_result = []
+    #         for head in range(self.n_heads):
+    #             q = self.Q[head](sequence)
+    #             k = self.K[head](sequence)
+    #             v = self.V[head](sequence)
+    #             scores = self.softmax((q @ k.T) / math.sqrt(self.v_dim))
+    #             z = scores @ v
+    #             seq_result.append(z)
+    #         results.append(seq_result)
+    #     results = [torch.cat([head_result for head_result in seq_result], dim=-1) for seq_result in results]
+    #     results = torch.cat([result[None, :] for result in results], dim=0)
+    #     results = self.mlp(results)
+
+        # return results
     
 
 
@@ -152,6 +168,7 @@ class Encoder(nn.Module):
         self.hidden_dim = hidden_dim
         self.n_heads = n_heads
         self.layer_norm = nn.LayerNorm(self.hidden_dim)
+        self.layer_norm2 = nn.LayerNorm(self.hidden_dim)
         self.attention = MultiHeadAttention(self.hidden_dim, self.n_heads)
         self.mlp = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim),
