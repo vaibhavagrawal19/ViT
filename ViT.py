@@ -55,8 +55,8 @@ class ViT(nn.Module):
         self.pos_embed.requires_grad = False
 
         """
-        self.pos_embed = nn.Parameter(torch.rand(1, self.n_patches + 1, self.hidden_dim))
-        self.class_token = nn.Parameter(torch.rand((1, self.hidden_dim)))
+        self.pos_embed = nn.Parameter(torch.rand(self.n_patches + 1, self.hidden_dim))
+        self.class_token = nn.Parameter(torch.rand(self.hidden_dim))
         self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_encoders)])
         self.encoders = nn.Sequential(*(self.encoders))
         self.mlp = nn.Linear(self.hidden_dim, self.out_dim)
@@ -73,10 +73,15 @@ class ViT(nn.Module):
         n = x.shape[0]
         patch_embeddings = self.patchify(x)
         assert patch_embeddings.shape == (n, self.n_patches, self.hidden_dim)
-        embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(self.device)
-        for i in range(n):
-            embeddings[i] = torch.cat([patch_embeddings[i], self.class_token])
-            embeddings[i] = embeddings[i] + self.pos_embed
+        # embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(self.device)
+        # print(patch_embeddings.shape)
+        embeddings = torch.cat([patch_embeddings, self.class_token.unsqueeze(0).unsqueeze(0).repeat(n, 1, 1)], dim=1)
+        # print(embeddings.shape)
+        embeddings = embeddings + self.pos_embed.unsqueeze(0).repeat(n, 1, 1)
+        
+        # for i in range(n):
+        #     embeddings[i] = torch.cat([patch_embeddings[i], self.class_token])
+        #     embeddings[i] = embeddings[i] + self.pos_embed
         features = self.encoders(patch_embeddings)[:, 0]
         return self.mlp(features)
         
@@ -146,7 +151,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"using {device}")
     # device = torch.device("cpu")
-    model = ViT((28, 28), device, in_channels=1, n_encoders=1, patch_dim=(4, 4)).to(device)
+    model = ViT((28, 28), device, in_channels=1, n_encoders=1, patch_dim=(3, 3)).to(device)
     optimizer = opt.Adam(model.parameters(), lr=LR)
     criterion = nn.CrossEntropyLoss()
     for epoch in range(NUM_EPOCHS):
