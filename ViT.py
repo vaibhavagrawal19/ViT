@@ -25,7 +25,6 @@ class PatchEmbedding(nn.Module):
         self.projection = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_dim, stride=patch_dim, padding=self.padding)
 
     def forward(self, x):
-        n = x.shape[0]
         x = self.projection(x)
         x = x.flatten(start_dim=-2)
         x = torch.transpose(x, -2, -1)
@@ -48,13 +47,7 @@ class ViT(nn.Module):
         self.n_patches = n_patches_x * n_patches_y
         self.hidden_dim = hidden_dim
 
-        """
-        # USE THIS WHEN YOU WANT THE SINE-COSINE POSITION EMBEDDINGS INSTEAD OF THE LEARNED POSITION EMBEDDINGS
-        
-        self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
-        self.pos_embed.requires_grad = False
-
-        """
+        # self.pos_embed = nn.Parameter(self.get_pos_embed(self.n_patches + 1))
         self.pos_embed = nn.Parameter(torch.rand(self.n_patches + 1, self.hidden_dim))
         self.class_token = nn.Parameter(torch.rand(self.hidden_dim))
         self.encoders = nn.ModuleList([Encoder(self.hidden_dim, self.n_heads) for _ in range(self.n_encoders)])
@@ -75,7 +68,7 @@ class ViT(nn.Module):
         assert patch_embeddings.shape == (n, self.n_patches, self.hidden_dim)
         embeddings = torch.cat([patch_embeddings, self.class_token.unsqueeze(0).unsqueeze(0).repeat(n, 1, 1)], dim=1)
         embeddings = embeddings + self.pos_embed.unsqueeze(0).repeat(n, 1, 1)
-        features = self.encoders(embeddings)[:, 0]
+        features = self.encoders(embeddings)[:, -1]
         return self.mlp(features)
         
         
