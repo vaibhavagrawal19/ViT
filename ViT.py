@@ -73,16 +73,9 @@ class ViT(nn.Module):
         n = x.shape[0]
         patch_embeddings = self.patchify(x)
         assert patch_embeddings.shape == (n, self.n_patches, self.hidden_dim)
-        # embeddings = torch.empty(n, patch_embeddings.shape[1] + 1, self.hidden_dim).to(self.device)
-        # print(patch_embeddings.shape)
         embeddings = torch.cat([patch_embeddings, self.class_token.unsqueeze(0).unsqueeze(0).repeat(n, 1, 1)], dim=1)
-        # print(embeddings.shape)
         embeddings = embeddings + self.pos_embed.unsqueeze(0).repeat(n, 1, 1)
-        
-        # for i in range(n):
-        #     embeddings[i] = torch.cat([patch_embeddings[i], self.class_token])
-        #     embeddings[i] = embeddings[i] + self.pos_embed
-        features = self.encoders(patch_embeddings)[:, 0]
+        features = self.encoders(embeddings)[:, 0]
         return self.mlp(features)
         
         
